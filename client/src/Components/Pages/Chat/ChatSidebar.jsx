@@ -15,10 +15,9 @@ const CustomSidebar = ({ setSelected, data }) => {
   const [conversations, setConversations] = useState([]);
   const socket = io.connect('http://localhost:5500');
   useEffect(() => {
-    socket.on("recivedConversion", (data) => {
-      console.log(data)
-      setConversations(data)
-    })
+    // socket.on("recivedConversion", (data) => {
+    //   setConversations(data)
+    // })
     // axios.get(API_URL + "conversations/" + user?._id)
     //   .then(res => {
     //     console.log(res.data)

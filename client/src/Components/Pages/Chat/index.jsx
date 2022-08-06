@@ -20,31 +20,27 @@ const ChatPage = () => {
   const user = JSON.parse(localStorage.getItem("authUser"));
   const [selected, setSelected] = useState(null);
   const [newMessage, setNewMessage] = useState("");
-  const receiverID = location.state.conversionId
+  const [message, setMessage] = useState("");
   const socket = io.connect('http://localhost:5500');
+  const receiverID = location?.state?.conversionId
   const [data, setData] = useState([])
   useEffect(() => {
-    socket.emit("addUser", user?._id);
-    // socket.current.on("getUsers", data => console.log(data));
-    socket.on("getMessage", data => {
-      setSelected(prevState => ({
-        ...prevState,
-        messages: [
-          ...prevState?.messages,
-          {
-            _id: new Date().getMilliseconds(),
-            conversationID: selected?.id,
-            senderID: data.senderID,
-            text: data.text,
-          },
-        ],
-      }));
-    });
-    socket.emit("createConversion", { receiverID: receiverID, senderID: user._id })
-    socket.on("recivedConversion", (data) => {
-      setData(data)
-    })
+
   }, []);
+  socket.emit("create-conversion", {
+    receiverID,
+    senderID: user._id
+  });
+  socket.on("created", (allData) => {
+    setData([data, allData])
+  });
+  socket.on("recivedConversion", (data) => {
+    setData(data)
+  })
+  socket.emit("get-messages-history", selected?._id)
+  socket.on('output-messages', (result) => {
+    setMessage(result)
+  })
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.addEventListener("keyup", function (event) {
@@ -55,42 +51,26 @@ const ChatPage = () => {
       });
     }
   }, [inputRef.current]);
-
   const handleNewMessageSend = () => {
     const receiverID = selected?.members.find(item => item !== user?._id);
-
-    if (newMessage !== "") {
-      const data = {
-        conversationID: selected?._id,
-        sender: user?._id,
-        text: newMessage,
-      };
-      socket.emit("sendMessage", data);
-      socket.on("recivedMessage", (data) => {
-        setSelected(prevState => ({
-          ...prevState,
-          messages: [...prevState?.messages, data.data],
-        }));
-        setNewMessage("");
-      });
-      // socket.emit("sendMessage", {
-      //   senderID: data.sender,
-      //   receiverID,
-      //   text: data.text,
-      // });
-
-      // axios
-      //   .post(API_URL + "messages", data)
-      //   .then(res => {
-      //     setSelected(prevState => ({
-      //       ...prevState,
-      //       messages: [...prevState?.messages, res.data],
-      //     }));
-      //     setNewMessage("");
-      //   })
-      //   .catch(() => toast.error("Message not sent! Try Again"));
+    const data = {
+      conversationID: selected?._id,
+      sender: user?._id,
+      text: newMessage,
+      receiverID,
     }
-  };
+    socket.emit("sendMessage", data)
+    socket.emit("get-messages-history", selected?._id)
+
+    socket.on('output-messages', (result) => {
+      setMessage(result)
+      setNewMessage("")
+    })
+    socket.on('message', (result) => {
+      setMessage([...message, result])
+      setNewMessage("")
+    })
+  }
   return (
     <>
       <Navbar />
@@ -102,14 +82,25 @@ const ChatPage = () => {
           <Col className="px-0 main-chat">
             {selected ? (
               <Row
-                className={`chat-message-content px-5 ${selected?.messages.length > 7 ? "d-block" : "d-grid"
+                className={`chat-message-content px-5 ${message.length > 7 ? "d-block" : "d-grid"
                   } align-content-end`}
               >
-                {selected?.messages
+                {message
                   .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
                   .map(msg => (
-                    <Message message={msg} own={msg?.sender === user?._id} />
-                  ))}
+                    <div
+                      key={message._id}
+                      className={`msg-content d-inline-flex ${msg?.sender === user?._id ? "justify-content-end" : "justify-content-start"
+                        } align-items-start h-auto`}
+                    >
+                      <div
+                        className={`${msg?.sender === user?._id ? "here" : "there"
+                          } my-2 d-flex flex-column p-2 text-white mw-75`}
+                      >
+                        <h6 className="mb-1 reciever color-primary">{msg?.name}</h6>
+                        <p className="mb-0">{msg.text}</p>
+                      </div>
+                    </div>))}
 
                 <Row className="msg-bottom-feild bg-appbar-light py-3 align-items-center justify-content-between d-none d-sm-flex">
                   <Col className="px-0" xs={10} sm={10} md={11}>
@@ -126,7 +117,7 @@ const ChatPage = () => {
 
                   <Col className="px-0 text-center" xs={2} sm={2} md={1}>
                     <Button
-                      // ref={sendBtnRef}
+                      ref={sendBtnRef}
                       type="link"
                       size="small"
                       onClick={handleNewMessageSend}

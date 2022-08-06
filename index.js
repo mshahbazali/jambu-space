@@ -22,19 +22,22 @@ const io = require("socket.io")(server, {
 	}
 })
 
-let users = [];
+const users = []
 
 io.on("connection", (socket) => {
-	socket.emit("me", socket.id)
-	socket.on("createConversion", async (data) => {
+	socket.on('create-conversion', async (user) => {
 		const conversations = await Conversation.find({
-			members: { $in: [data.receiverID] },
+			members: { $in: [user.receiverID] },
 		});
+		// const exist = users.find(allUser => allUser.conversionId === user.conversionId && allUser.user_id === user.user_id);
 		if (conversations[0] == undefined) {
-			const conversation = new Conversation({
-				members: [data.senderID, data.receiverID],
-			});
-			conversation.save()
+			const members = [user.senderID, user.receiverID]
+			const addWorkspace = new Conversation({ members: members })
+			addWorkspace.save().then((res) => {
+				const createConversion = { members: res.members, conversionId: res._id, socketId: socket.id };
+				users.push(createConversion)
+				socket.emit('created', res)
+			})
 		}
 		else {
 			let modifiedConversations = await Promise.all(
@@ -49,38 +52,47 @@ io.on("connection", (socket) => {
 					}
 				})
 			);
-			console.log(modifiedConversations)
 			socket.emit("recivedConversion", modifiedConversations)
 		}
 	})
+
 	socket.on("sendMessage", async (data) => {
-		users.find((user) => user.userId === userId);
-		io.to(user.socketId).emit("getMessage", {
-			senderId,
-			text,
-		});
-		const message = new Message(data)
-		const savedMessage = await message.save()
-		socket.emit("recivedMessage", savedMessage)
-	})
-	socket.on("addUser", (userId) => {
-		!users.some((user) => user.userId === userId) &&
-			users.push({ userId, socketId: socket.id });
-		io.emit("getUsers", users);
-	});
+		const getUser = (socket_id) => users.find(user => user.socket_id === socket_id)
+		const user = getUser(socket.id)
+		if (user) {
+			const msgToStore = {
+				sender: user.sender,
+				conversationID: data.conversationID,
+				text: data.text,
+				receiverID: data.receiverID
+			}
+			const msg = new Message(msgToStore);
+			msg.save().then(result => {
+				socket.emit('message', result);
+				callback()
+			})
+		}
+		else {
+			const msgToStore = {
+				sender: data.sender,
+				conversationID: data.conversationID,
+				text: data.text,
+				receiverID: data.receiverID
+			}
+			const msg = new Message(msgToStore);
+			msg.save().then(result => {
+				socket.emit('message', result);
+			})
+		}
 
-	socket.on("disconnect", () => {
-		socket.broadcast.emit("callEnded")
-	})
 
-	socket.on("callUser", (data) => {
-		io.to(data.userToCall).emit("callUser", { signal: data.signalData, from: data.from, name: data.name })
 	})
-
-	socket.on("answerCall", (data) => {
-		io.to(data.to).emit("callAccepted", data.signal)
+	socket.on('get-messages-history', async (conversationID) => {
+		Message.find({ conversationID }).then(result => {
+			socket.emit('output-messages', result)
+		})
 	})
-})
+});
 
 
 const isProduction = NODE_ENV === "production";
